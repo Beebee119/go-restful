@@ -13,27 +13,31 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var DB *sql.DB
+// var DB *sql.DB
 
 type Train struct {
 	ID              int
 	DriverName      string
 	OperatingStatus bool
+	DB              *sql.DB
 }
 type Station struct {
 	ID          int
 	Name        string
 	OpeningTime time.Time
 	ClosingTime time.Time
+	DB          *sql.DB
 }
 type Schedule struct {
 	ID          int
 	TrainID     int
 	StaionID    int
 	ArrivalTime time.Time
+	DB          *sql.DB
 }
 
-func (t *Train) Register(container *restful.Container) {
+func (t *Train) Register(container *restful.Container, DB *sql.DB) {
+	t.DB = DB
 	ws := new(restful.WebService)
 	ws.
 		Path("/v1/trains").
@@ -47,7 +51,7 @@ func (t *Train) Register(container *restful.Container) {
 
 func (t *Train) getTrain(request *restful.Request, response *restful.Response) {
 	id := request.PathParameter("train_id")
-	err := DB.QueryRow("select id, driver_name, operating_status from train where id = ?;", id).Scan(&t.ID, &t.DriverName, &t.OperatingStatus)
+	err := t.DB.QueryRow("select id, driver_name, operating_status from train where id = ?;", id).Scan(&t.ID, &t.DriverName, &t.OperatingStatus)
 	if err != nil {
 		log.Println("Error get Train ID: ", id, err)
 		response.AddHeader("Content-Type", "text-plain")
@@ -64,8 +68,9 @@ func (t *Train) createTrain(request *restful.Request, response *restful.Response
 	if err != nil {
 		log.Println("Error get data from request body")
 	}
+	defer request.Request.Body.Close()
 	log.Printf("Driver Name:%s, Operating status:%v\n", temp.DriverName, temp.OperatingStatus)
-	statement, err := DB.Prepare("INSERT INTO train (driver_name, operating_status) VALUES (?, ?)")
+	statement, _ := t.DB.Prepare("INSERT INTO train (driver_name, operating_status) VALUES (?, ?)")
 	if err != nil {
 		log.Println("Error prepare statement")
 	} else {
@@ -84,7 +89,7 @@ func (t *Train) createTrain(request *restful.Request, response *restful.Response
 
 func (t *Train) deleteTrain(request *restful.Request, response *restful.Response) {
 	id := request.PathParameter("train_id")
-	statement, err := DB.Prepare("delete from train where id = ?;")
+	statement, err := t.DB.Prepare("delete from train where id = ?;")
 	if err != nil {
 		log.Println("Error in creating table books")
 	} else {
@@ -110,7 +115,7 @@ func main() {
 	wsContainter.Router(restful.CurlyRouter{})
 	// restful.CurlyRouter allows us to use {train_id} path parameter
 	t := Train{}
-	t.Register(wsContainter)
+	t.Register(wsContainter, DB)
 	log.Println("start listening on localhost:8000")
 	server := &http.Server{
 		Addr:    ":8000",
